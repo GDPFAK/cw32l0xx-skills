@@ -30,7 +30,23 @@ cw32-dev/
 
 依赖链：`app -> board -> chip sdk`，RTOS（none|freertos|rtthread）可选。
 
-## 环境与工具链路径（本机）
+## 环境与工具链（自动引导，无需重复下载）
+
+工具链统一放在仓库 `tools/`（gcc 13.3.1 / cmake 3.30.5 / ninja / pyocd + 4 个 DFP pack）。
+**首次使用先运行引导脚本**，它会检测缺失组件并自动下载安装（已存在则跳过，幂等，不重复下载）：
+
+```powershell
+# 在 cw32-dev 仓库根目录运行
+powershell -ExecutionPolicy Bypass -File setup-toolchain.ps1
+# 本机已有工具链时用复制模式（最快）：
+powershell -ExecutionPolicy Bypass -File setup-toolchain.ps1 -CopyFrom "D:\path\to\existing\tools"
+```
+
+脚本行为：
+- 检测 `tools/` 下 gcc/cmake/ninja 是否存在 → 缺失时从官方源（xPack/Kitware/ninja-build）下载 zip 解压。
+- 检测 pyocd → 缺失且系统有 python 时自动 `pip install pyocd`。
+- 校验 `tools/pyocd/` 下 CW32 DFP pack（4 个）是否就位。
+- GitHub 不可达时：先手动下载 zip 到 `tools/.downloads/` 再重试，或改用 `-CopyFrom`。
 
 工具不在系统 PATH，构建命令需先加 PATH（PowerShell）：
 

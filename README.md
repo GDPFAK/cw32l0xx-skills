@@ -12,6 +12,7 @@ Cursor 等），无需改写。
 
 框架 skill（`cw32-framework`）提供：
 - 基于 CMake + Ninja + arm-none-eabi-gcc + pyocd 的开发框架全流程：建项目骨架 → 编译 → 生成 hex → 烧录。
+- **工具链引导**（`reference/setup-toolchain.ps1`）：自动检测并下载安装缺失组件到 `tools/`，幂等不重复下载。
 - **电机控制模板**（`reference/motor_control_main.c`，ATIM PWM + ADC 采样）与
   **电源模板**（`reference/power_supply_main.c`，GTIM PWM + ADC 反馈 + 数字 PI 闭环），均已通过
   clean 构建验证可编译产出 hex。
@@ -49,6 +50,9 @@ powershell -ExecutionPolicy Bypass -File install-skills.ps1 -Target reasonix
 powershell -ExecutionPolicy Bypass -File install-skills.ps1 -Target opencode
 powershell -ExecutionPolicy Bypass -File install-skills.ps1 -Target claude
 ```
+
+> 框架 skill 需要 cw32-dev 工程才能构建/烧录。没有工程时，先把本仓库放到与 cw32-dev 相同的位置，
+> 或把 `cw32-framework/reference/setup-toolchain.ps1` 复制到工程根目录运行，即可自动准备工具链。
 
 | Target | 安装位置 | 说明 |
 |---|---|---|
