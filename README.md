@@ -1,14 +1,20 @@
 # CW32L0xx 芯片开发 Skills
 
-CW32L010 / CW32L011 / CW32L012 三颗芯片的 Agent Skills 包。标准 SKILL.md 格式，兼容任何实现
-Agent Skills 标准的智能体（Reasonix、opencode、Claude Code、Codex CLI、Gemini CLI、Cursor 等），
-无需改写。
+CW32L010 / CW32L011 / CW32L012 三颗芯片 + CW32 开发框架的 Agent Skills 包。标准 SKILL.md 格式，
+兼容任何实现 Agent Skills 标准的智能体（Reasonix、opencode、Claude Code、Codex CLI、Gemini CLI、
+Cursor 等），无需改写。
 
-每个 skill 提供：
+芯片 skill（`cw32l0xx`）提供：
 - **已验证的寄存器速查表**：基地址、SYSCTRL 偏移、GPIO/UART 位语义、IRQ 表（对照官方手册逐条核对）。
 - **手册全文**：`reference/usermanual.txt`（用户手册）、`reference/datasheet.txt`（数据手册），按需加载。
 - **反向验证工作流**：8 步核对清单（基址→偏移→时钟使能→位域→IRQ→复用→SDK API→DMA），
   逐条比对手册，判断智能体生成的代码"可用 / 需修正"。
+
+框架 skill（`cw32-framework`）提供：
+- 基于 CMake + Ninja + arm-none-eabi-gcc + pyocd 的开发框架全流程：建项目骨架 → 编译 → 生成 hex → 烧录。
+- **电机控制模板**（`reference/motor_control_main.c`，ATIM PWM + ADC 采样）与
+  **电源模板**（`reference/power_supply_main.c`，GTIM PWM + ADC 反馈 + 数字 PI 闭环），均已通过
+  clean 构建验证可编译产出 hex。
 
 ## 目录结构
 
@@ -16,6 +22,9 @@ Agent Skills 标准的智能体（Reasonix、opencode、Claude Code、Codex CLI�
 skills/
 ├── install-skills.ps1       # 一键安装脚本
 ├── README.md
+├── cw32-framework/
+│   ├── SKILL.md             # 开发框架：建项目/编译/hex/烧录
+│   └── reference/           # 电机/电源可编译模板
 ├── cw32l010/
 │   ├── SKILL.md
 │   └── reference/           # 用户手册 + 数据手册 + 固件库校验报告
@@ -72,9 +81,12 @@ powershell -ExecutionPolicy Bypass -File install-skills.ps1 -Target reasonix
 ```
 审查 src/main.c，确认用到的外设寄存器与 CW32L011 手册一致
 ```
+```
+用 cw32-dev 框架新建一个电机控制项目，编译出 hex 并烧录到 CW32L012
+```
 
-也可手动触发（Reasonix）：`/skill cw32l012`；或指定子智能体隔离运行：
-`/skill cw32l012 runAs=subagent`。
+也可手动触发（Reasonix）：`/skill cw32l012` 或 `/skill cw32-framework`；
+或指定子智能体隔离运行：`/skill cw32l012 runAs=subagent`。
 
 ## 反向验证（Reverse Verification）
 
