@@ -12,10 +12,14 @@ Cursor 等），无需改写。
 
 框架 skill（`cw32-framework`）提供：
 - 基于 CMake + Ninja + arm-none-eabi-gcc + pyocd 的开发框架全流程：建项目骨架 → 编译 → 生成 hex → 烧录。
-- **工具链引导**（`reference/setup-toolchain.ps1`）：自动检测并下载安装缺失组件到 `tools/`，幂等不重复下载。
-- **电机控制模板**（`reference/motor_control_main.c`，ATIM PWM + ADC 采样）与
-  **电源模板**（`reference/power_supply_main.c`，GTIM PWM + ADC 反馈 + 数字 PI 闭环），均已通过
+- **五层架构目录约定**（`App/Core/Device/System/BSP`，Drivers 独立放厂家库）：应用层 / 核心逻辑层 / 设备层 / 系统层 / 板级支持包。
+- **工具链引导**（`reference/setup-toolchain.ps1`）：自动检测并下载安装缺失组件到 `tools/`，幂等不重复下载；烧录前 skill 会自动调用。
+- **独立工程生成**（`reference/create-project.ps1`）：把 5 层模板源码 + 厂家标准外设库（`Drivers/`）+ 启动/链接脚本 + cmake/pyocd 配置完整复制，生成不依赖 cw32-dev 的独立工程。
+- **电机控制模板**（`reference/motor_control/`，5 层目录树，ATIM PWM + ADC 采样）与
+  **电源模板**（`reference/power_supply/`，5 层目录树，GTIM PWM + ADC 反馈 + 数字 PI 闭环），均已通过
   clean 构建验证可编译产出 hex。
+- **烧录**：自动烧录目标暂时移除（`CW32_ENABLE_FLASH` 默认 OFF）；用户发起烧录时由 skill 先运行
+  `setup-toolchain.ps1` 再直调 `pyocd flash -t <target> <app>.hex`。
 
 ## 目录结构
 
@@ -24,8 +28,8 @@ skills/
 ├── install-skills.ps1       # 一键安装脚本
 ├── README.md
 ├── cw32-framework/
-│   ├── SKILL.md             # 开发框架：建项目/编译/hex/烧录
-│   └── reference/           # 电机/电源可编译模板
+│   ├── SKILL.md             # 开发框架：五层架构/建项目/编译/hex/烧录
+│   └── reference/           # motor_control、power_supply 5 层模板 + create-project.ps1 + setup-toolchain.ps1
 ├── cw32l010/
 │   ├── SKILL.md
 │   └── reference/           # 用户手册 + 数据手册 + 固件库校验报告
@@ -51,8 +55,9 @@ powershell -ExecutionPolicy Bypass -File install-skills.ps1 -Target opencode
 powershell -ExecutionPolicy Bypass -File install-skills.ps1 -Target claude
 ```
 
-> 框架 skill 需要 cw32-dev 工程才能构建/烧录。没有工程时，先把本仓库放到与 cw32-dev 相同的位置，
-> 或把 `cw32-framework/reference/setup-toolchain.ps1` 复制到工程根目录运行，即可自动准备工具链。
+> 框架 skill 需要 cw32-dev 工程才能构建/烧录。没有工程时，先用
+> `cw32-framework/reference/create-project.ps1` 生成独立工程（会把厂家库复制到 `Drivers/`、自带
+> `setup-toolchain.ps1`），或用 `-CopyFrom` 模式从已有 `tools/` 复制工具链。
 
 | Target | 安装位置 | 说明 |
 |---|---|---|

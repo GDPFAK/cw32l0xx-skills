@@ -10,7 +10,26 @@ metadata:
 
 # CW32 开发框架（cw32-dev）：建项目 → 编译 → 生成 hex → 烧录
 
-本 skill 描述 `cw32-dev` 仓库的开发框架：如何在其中创建电机/电源等新应用、生成项目骨架、编译产出 hex，并通过 pyocd 烧录。与 `cw32l010` / `cw32l011` / `cw32l012` 芯片 skill 配合使用（后者提供寄存器级校验）。
+本 skill 描述 `cw32-dev` 仓库的开发框架：如何在其中创建电机/电源等新应用、生成**完全独立**的 5 层架构工程、编译产出 hex，并通过 pyocd 烧录。与 `cw32l010` / `cw32l011` / `cw32l012` 芯片 skill 配合使用（后者提供寄存器级校验）。
+
+## 五层架构目录约定（新建工程的默认骨架）
+
+生成新工程（无论独立工程还是 cw32-dev 内 app）遵循**五层架构**，依赖方向单向向下、禁止反向：
+
+```
+<project>/
+├── App/      应用层：系统任务创建、模块启动与整体调度（main.c + app_task.c）
+├── Core/     核心逻辑层：核心算法、业务逻辑、FreeRTOS 任务实体（无硬件调用）
+├── Device/   设备层：纯协议/数据转换，把硬件数据转换为上层全局数据结构，不含 RTOS 任务
+├── System/   系统层：封装 MCU 硬件资源（UART/DMA/定时器/中断），提供底层服务
+├── BSP/      板级支持包：定义具体开发板上的硬件连接与配置
+└── Drivers/  厂家库（仅独立工程存在；cw32-dev 内对应共享的 sdk/）
+```
+
+- **App -> Core -> Device -> System -> BSP -> Drivers/sdk**，各层只能调用其下层接口。
+- 中断回调（如 `ATIM_IRQHandler`）归属 `System/`，通过注册回调节拍（`sys_irq_set_ctrl_tick`）把控制环调用转发给 `Core/`，System 再把 `Device/` 的指令落到硬件。
+- `Device/` 只持有全局数据结构与纯换算函数，不含任务、不含业务。
+- 模板源码见 `reference/motor_control/`、`reference/power_supply/`（5 层目录树）。
 
 ## 框架概览
 
@@ -22,13 +41,15 @@ cw32-dev/
 ├── cmake/cw32.cmake          cw32_app() 公共函数（挂启动文件/链接脚本/hex/flash 目标）
 ├── sdk/<chip>/               标准外设库 -> ${CW32_CHIP}_sdk（L010/L011/L012 已完整接入）
 ├── boards/<board>/           板级抽象 -> board_${CW32_BOARD}（cw32l0xx_mini 适用于 L0 系列）
-├── apps/<app>/               应用 -> ${CW32_APP}
+├── apps/<app>/               应用 -> ${CW32_APP}（内部为 App/Core/Device/System/BSP 五层）
 ├── lds/<chip>.ld             链接脚本
 ├── startup/<chip>.s          启动文件
 └── tools/                    cmake-3.30.5 / ninja / gcc(arm-none-eabi 13.3.1) / pyocd DFP
 ```
 
 依赖链：`app -> board -> chip sdk`，RTOS（none|freertos|rtthread）可选。
+
+`apps/` 下的应用一律采用五层目录（`App/ Core/ Device/ System/ BSP/`），见上文「五层架构目录约定」。
 
 ## 环境与工具链（自动引导，无需重复下载）
 
@@ -76,41 +97,75 @@ $env:PATH = "D:\ai-project\dev\cw32-dev\tools\gcc\xpack-arm-none-eabi-gcc-13.3.1
 
 ## 创建新应用骨架（电机 / 电源 / 任意裸机）
 
-在 `apps/<app>/` 下创建 `CMakeLists.txt` + `main.c`。`CMakeLists.txt` 固定写法：
+在 `apps/<app>/` 下按五层建目录（`App/ Core/ Device/ System/ BSP/`），并写 `CMakeLists.txt`。模板写法（源文件按层列出，并加各层 include 目录）：
 
 ```cmake
 # apps/<app>/CMakeLists.txt
-cw32_app(<app> main.c)
+cw32_app(<app>
+  App/main.c
+  App/app_task.c
+  Core/<core>.c
+  Device/device_data.c
+  Device/<convert>.c
+  System/<pwm>.c
+  System/adc_sensor.c
+  System/sys_assert.c
+  BSP/bsp_pins.c
+)
+target_include_directories(<app> PRIVATE App Core Device System BSP)
 ```
 
-`cw32_app()` 自动完成：挂 `${CW32_CHIP}.s` 启动文件、`-T${CW32_CHIP}.ld` 链接脚本、链接 `board_${CW32_BOARD}`、可选 RTOS，POST_BUILD 生成 `<app>.hex`，并创建 `flash` / `flash_reset` 目标。
+`cw32_app()` 自动完成：挂 `${CW32_CHIP}.s` 启动文件、`-T${CW32_CHIP}.ld` 链接脚本、链接 `board_${CW32_BOARD}`、可选 RTOS，POST_BUILD 生成 `<app>.hex`。**默认不再生成 `flash`/`flash_reset` 目标**（`CW32_ENABLE_FLASH` 默认 OFF，自动烧录暂时移除）；烧录改由 skill 按需直调 pyocd（见「烧录」）。
 
-`main.c` 通过 `#include "board.h"` 使用板级 API（`board_led_init/on/off`、`board_delay_ms`），换板零改动。需要外设时，用芯片头文件 + 对应外设驱动（`cw32l012.h` / `cw32l012_gpio.h` / `cw32l012_atim.h` 等）。
+各层职责与 `main.c` 用法：`App/main.c` 只调 `app_task_init()` + `app_task_run()`；`app_task.c` 负责模块启动顺序与调度，并注册控制环回调（`sys_irq_set_ctrl_tick(motor_ctrl_tick)`）。BSP 层通过 `#include "board.h"` 使用板级 API（`board_led_init/on/off`、`board_delay_ms`），换板零改动。需要外设时，由 System 层使用芯片头文件 + 对应外设驱动（`cw32l012.h` / `cw32l012_atim.h` 等）。
 
 ### 新建应用通用步骤
 
-1. `mkdir apps/<app>`，写 `CMakeLists.txt`（`cw32_app(<app> main.c ...)`）。
-2. 写 `main.c`：`#include "board.h"` + 芯片头文件，配置外设时钟（`__SYSCTRL_xxx_CLK_ENABLE()`），初始化外设。
+1. `mkdir apps/<app>/{App,Core,Device,System,BSP}`，写 `CMakeLists.txt`（见上）。
+2. 逐层写代码：BSP 引脚连接 -> System 外设服务 -> Device 数据结构/换算 -> Core 算法/业务 -> App 启动调度。
 3. 配置：用 `cmake --preset`（现有预设改 `CW32_APP`）或手工 `cmake -B build/<app> -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm-none-eabi.cmake -DCW32_CHIP=... -DCW32_BOARD=... -DCW32_APP=<app> -DCW32_RTOS=none -DPYOCD_TARGET=...`。
-4. 编译 → hex → 烧录（命令见下）。
+4. 编译 → hex（命令见下）。烧录见「烧录」小节。
+
+## 创建完全独立工程（推荐给用户自行修改）
+
+当用户要在 cw32-dev **之外**建一个独立工程时，用 `reference/create-project.ps1` 生成：把 5 层模板源码 + **厂家标准外设库复制到 `Drivers/`** + 启动/链接脚本 + CMSIS + cmake 工具链 + pyocd 配置 + `setup-toolchain.ps1` 全部复制出来，生成后完全不依赖 cw32-dev，用户改完即可编译：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File reference/create-project.ps1 `
+  -Name <工程名> -Chip cw32l012 -OutDir D:\work `
+  -SourceRoot D:\ai-project\dev\cw32-dev -Template motor_control
+```
+
+生成目录（`<OutDir>/<工程名>/`）：
+
+```
+App/ Core/ Device/ System/ BSP/     # 5 层源码（BSP 含 board.c/h 副本）
+Drivers/                            # 厂家标准外设库 inc/src（+ Drivers/CMakeLists.txt）
+startup/startup_<chip>.s  lds/<chip>.ld
+cmsis/  cmake/  pyocd.yaml
+setup-toolchain.ps1                 # 环境下载脚本（保留）
+CMakeLists.txt                      # 独立构建，CW32_ENABLE_FLASH=OFF
+```
+
+用户后续修改针对独立工程进行；cw32-dev 仅作为生成源，改动不同步回仓库。
 
 ## 模板一：电机控制（motor_control）
 
-适用：BLDC/PMSM/直流有刷电机。**完整可编译源码见 `reference/motor_control_main.c`**（在 cw32-dev 仓库 `apps/motor_control/` 中已通过 clean 构建验证，产出 `motor_control.hex`）。要点：
-- **ATIM**（高级定时器，`CW_ATIM` 0x40001400）输出 PWM：`ATIM_Init` + `ATIM_OCxInit`（`ATIM_OCMODE_PWM1`）+ `ATIM_SetComparex` + `ATIM_CHxConfig(ENABLE)` + `ATIM_Cmd(ENABLE)`。死区用 `ATIM_SetPWMDeadtime()`。
-- **ADC**（ADC1，实例名 `CW_ADC1` 0x40000000）采样电流/电压反馈：`__SYSCTRL_ADC_CLK_ENABLE()`（来自 `cw32l012_sysctrl.h`）、`ADC_Init` + `ADC_SoftwareStartConvCmd(CW_ADC1, ENABLE)` + `ADC_GetConversionValue(CW_ADC1, 0)`。
+适用：BLDC/PMSM/直流有刷电机。**完整可编译源码见 `reference/motor_control/`（5 层目录树）**（在 cw32-dev 仓库 `apps/motor_control/` 中已通过 clean 构建验证，产出 `motor_control.hex`）。要点：
+- **ATIM**（高级定时器，`CW_ATIM` 0x40001400）输出 PWM：位于 `System/atim_pwm.c`，`ATIM_Init` + `ATIM_OCxInit`（`ATIM_OCMODE_PWM1`）+ `ATIM_SetComparex` + `ATIM_CHxConfig(ENABLE)` + `ATIM_Cmd(ENABLE)`。死区用 `ATIM_SetPWMDeadtime()`。
+- **ADC**（ADC1，实例名 `CW_ADC1` 0x40000000）采样电流/电压反馈：位于 `System/adc_sensor.c`，`__SYSCTRL_ADC_CLK_ENABLE()`（来自 `cw32l012_sysctrl.h`）、`ADC_Init` + `ADC_SoftwareStartConvCmd(CW_ADC1, ENABLE)` + `ADC_GetConversionValue(CW_ADC1, 0)`。
+- 控制环：`System/irq.c` 的 `ATIM_IRQHandler` 采样后经回调节拍调 `Core/motor_ctrl.c` 的 `motor_ctrl_tick()`（斜坡调速，可扩展 PI/FOC），再落 PWM；业务逻辑与硬件解耦。
 - 三个上桥臂 PWM 建议 PA05(ATIM_CH1)/PA09(ATIM_CH2)/PA10(ATIM_CH3)，下桥臂用互补输出（`ATIM_OCInitTypeDef.OCComplement`）或独立 IO。
-- 建议用 ATIM 更新中断（`ATIM_IT_UIE`）做控制环节拍：`ATIM_ITConfig` + `NVIC_EnableIRQ(ATIM_IRQn)`（IRQ=13）。
-- 两个坑：外设实例宏是 `CW_ATIM`/`CW_ADC1`（不是 `ATIM`/`ADC1`）；`USE_FULL_ASSERT` 开启时应用必须实现 `void assert_failed(uint8_t*, uint32_t)`，否则链接报 undefined reference。
+- 两个坑：外设实例宏是 `CW_ATIM`/`CW_ADC1`（不是 `ATIM`/`ADC1`）；`USE_FULL_ASSERT` 开启时应用必须实现 `void assert_failed(uint8_t*, uint32_t)`（已在 `System/sys_assert.c` 提供），否则链接报 undefined reference。
 
 ## 模板二：电源（power_supply）
 
-适用：DC-DC / AC-DC / 恒压恒流。**完整可编译源码见 `reference/power_supply_main.c`**（在 cw32-dev 仓库 `apps/power_supply/` 中已通过 clean 构建验证，产出 `power_supply.hex`），含数字定点 PI 闭环。要点：
-- **GTIM**（如 GTIM1，实例 `CW_GTIM1` 0x40001800）输出固定频率 PWM：`GTIM_TimeBaseInit` + `GTIM_OC1ModeCfg`（`GTIM_OC_MODE_PWM1`、`GTIM_OC_POLAR_NONINVERT`）+ `GTIM_SetCompare1` + `GTIM_OC1Cmd(ENABLE)` + `GTIM_Cmd(ENABLE)`。
+适用：DC-DC / AC-DC / 恒压恒流。**完整可编译源码见 `reference/power_supply/`（5 层目录树）**（在 cw32-dev 仓库 `apps/power_supply/` 中已通过 clean 构建验证，产物 `power_supply.hex`），含数字定点 PI 闭环（`Core/pi_ctrl.c`）。要点：
+- **GTIM**（如 GTIM1，实例 `CW_GTIM1` 0x40001800）输出固定频率 PWM：位于 `System/gtim_pwm.c`，`GTIM_TimeBaseInit` + `GTIM_OC1ModeCfg`（`GTIM_OC_MODE_PWM1`、`GTIM_OC_POLAR_NONINVERT`）+ `GTIM_SetCompare1` + `GTIM_OC1Cmd(ENABLE)` + `GTIM_Cmd(ENABLE)`。
 - **ADC** 采样输出电压/电流做闭环：同电机模板 ADC 用法。比较器（VC1~VC4）可做 OCP 硬件保护，OPA 可做电流采样放大。
-- 建议：主循环或 GTIM 周期中断内做 PI 环，占空比写 `GTIM_SetComparex`。
+- 控制：`App/app_task.c` 主循环或 GTIM 周期中断内做 PI 环（`Core/pi_ctrl.c` 的 `pi_ctrl_update()`），占空比写 `GTIM_SetComparex`。
 
-## 构建 / 生成 hex / 烧录命令
+## 构建 / 生成 hex 命令
 
 ```powershell
 # 1) 配置（现有预设或新建）
@@ -123,13 +178,23 @@ cmake -B build/<app> -G Ninja `
 
 # 2) 编译（自动生成 <app>.hex）
 cmake --build --preset <preset>    # 或 ninja -C build/<app>
-
-# 3) 烧录（hex 内含地址，无需 -a）
-cmake --build build/<app> --target flash          # pyocd flash -t <target> <app>.hex
-cmake --build build/<app> --target flash_reset    # 烧录 + 复位
 ```
 
-`flash` 目标为 `pyocd flash -t ${PYOCD_TARGET} ${HEX}`，无调试器连接时会等待，接上 CMSIS-DAP 后继续。
+## 烧录（skill 工作流：先自动跑环境脚本，再直调 pyocd）
+
+**自动烧录已暂时移除**：`cw32_app()` 默认不再生成 `flash`/`flash_reset` 目标（`CW32_ENABLE_FLASH` 默认 OFF）。烧录由 skill 按需执行；当用户发起烧录请求时，skill 依此流程操作：
+
+```powershell
+# 1) 先自动运行环境下载脚本（幂等：检测并补齐工具链/DFP，已存在则跳过）
+powershell -ExecutionPolicy Bypass -File setup-toolchain.ps1
+
+# 2) 再直调 pyocd 烧录（不经 CMake flash 目标）
+pyocd flash -t ${PYOCD_TARGET} build/<app>/<app>.hex
+pyocd reset -t ${PYOCD_TARGET}            # 需要复位时
+```
+
+- 在 cw32-dev 根目录运行 pyocd 自动加载 `pyocd.yaml`（指向 `tools/pyocd/` 下 4 个本地 DFP pack）；独立工程同样自带 `pyocd.yaml`。
+- 若用户需要恢复 CMake `flash`/`flash_reset` 目标（例如手动用 CI 烧录），可在配置时加上 `-DCW32_ENABLE_FLASH=ON`。
 
 ## 与芯片 skill 配合（反向验证）
 
@@ -144,8 +209,11 @@ cmake --build build/<app> --target flash_reset    # 烧录 + 复位
 ## 参考文件
 
 - `README.md`（仓库根）：框架说明、新增板卡/应用步骤、常见问题。
-- `cmake/cw32.cmake`：`cw32_app()` 实现（hex/flash 目标）。
+- `cmake/cw32.cmake`：`cw32_app()` 实现（hex 目标 + `CW32_ENABLE_FLASH` 开关）。
 - `CMakePresets.json`：现有预设与四维组合示例。
 - `apps/blink`、`apps/rtos_demo`：最小可编译应用范例。
-- `apps/motor_control`、`apps/power_supply`：电机/电源可编译模板（源码副本在 `reference/`）。
+- `apps/motor_control`、`apps/power_supply`：电机/电源可编译模板（5 层目录树，副本在 `reference/`）。
+- `reference/motor_control/`、`reference/power_supply/`：5 层模板源码（App/Core/Device/System/BSP）。
+- `reference/create-project.ps1`：生成完全独立工程（厂家库 -> `Drivers/`）。
+- `reference/setup-toolchain.ps1`：工具链/DFP 引导下载脚本（烧录前 skill 自动调用）。
 - `boards/cw32l0xx_mini/board.h/.c`：板级 API 与芯片切换写法。
