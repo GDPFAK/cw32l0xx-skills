@@ -1,6 +1,6 @@
-# CW32L0xx 芯片开发 Skills
+# CW32L0xx 芯片开发 Skills + 屏幕显示 Skills
 
-CW32L010 / CW32L011 / CW32L012 三颗芯片 + CW32 开发框架的 Agent Skills 包。标准 SKILL.md 格式，
+CW32L010 / CW32L011 / CW32L012 三颗芯片 + CW32 开发框架 + **屏幕显示芯片驱动** 的 Agent Skills 包。标准 SKILL.md 格式，
 兼容任何实现 Agent Skills 标准的智能体（Reasonix、opencode、Claude Code、Codex CLI、Gemini CLI、
 Cursor 等），无需改写。
 
@@ -21,6 +21,24 @@ Cursor 等），无需改写。
 - **烧录**：自动烧录目标暂时移除（`CW32_ENABLE_FLASH` 默认 OFF）；用户发起烧录时由 skill 先运行
   `setup-toolchain.ps1` 再直调 `pyocd flash -t <target> <app>.hex`。
 
+屏幕显示 skill 包提供：
+- **顶层调度器**（`screen-dispatch`）：自动识别用户屏幕指令，路由到对应芯片 skill。
+- **统一接口规范**（`screen-interface`）：定义 HAL 接口、图形 API、字体规范、颜色定义。
+- **TFT 彩屏驱动**：
+  - `st7789` — 240×240/240×320，SPI，RGB565，小尺寸彩屏首选
+  - `st7735` — 128×160，SPI，RGB565，低分辨率入门屏（含红板/黑板偏移配置）
+  - `ili9341` — 240×320，SPI/并口，RGB565，经典款，生态最成熟
+  - `gc9a01` — 240×240 圆屏，SPI，RGB565，圆形屏幕专用（含圆形裁剪）
+- **OLED 单色屏驱动**：
+  - `ssd1306` — 128×64/128×32，I2C/SPI，最流行的 OLED 芯片
+  - `sh1106` — 128×64，I2C/SPI，仅页地址模式，中文显示优化（16×16=2页）
+- 每个芯片 skill 包含：已验证的初始化序列、寄存器命令集、时序参数、完整驱动代码模板、cw32-dev 集成指南、独立使用指南、反向验证检查点。
+- 统一 HAL 接口设计，切换屏幕芯片时上层应用代码零修改。
+
+电源程序设计 skill 提供：
+- **顶层专精 skill**（`power-design`）：覆盖 11 种常用开关电源拓扑（DC-DC buck/boost/buck-boost/flyback/forward/half-bridge/full-bridge/LLC、boost-PFC、inverter、LED 恒流）的程序设计、PWM 频率与分辨率设计、ADC 采样点、闭环算法（VM/PCM/ACM）、3 级保护硬件选型（VC/OPA/LVD）、5 层骨架基线与代码质量硬约束、12 步反向验证清单。加载入口：用户提及 SMPS/电源/buck/反激/PFC/逆变/恒压/恒流/补偿等任一关键词。
+- 与 `cw32-framework`（五层架构 + 编译） + `cw32l010/l011/l012`（寄存器级反向验证） + `cw32-flash`（烧录）配套使用。
+
 ## 目录结构
 
 ```
@@ -36,9 +54,28 @@ skills/
 ├── cw32l011/
 │   ├── SKILL.md
 │   └── reference/
-└── cw32l012/
+├── cw32l012/
+│   ├── SKILL.md
+│   └── reference/
+├── screen-dispatch/         # 屏幕显示顶层调度器
+│   └── SKILL.md
+├── screen-interface/        # 屏幕统一接口规范
+│   └── SKILL.md
+├── st7789/                  # ST7789 TFT彩屏 (240x240/240x320)
+│   └── SKILL.md
+├── st7735/                  # ST7735 TFT彩屏 (128x160)
+│   └── SKILL.md
+├── ili9341/                 # ILI9341 TFT彩屏 (240x320)
+│   └── SKILL.md
+├── gc9a01/                  # GC9A01 圆形TFT彩屏 (240x240)
+│   └── SKILL.md
+├── ssd1306/                 # SSD1306 OLED (128x64/128x32)
+│   └── SKILL.md
+├── sh1106/                  # SH1106 OLED (128x64)
+│   └── SKILL.md
+└── power-design/            # 电源程序设计专精 skill（SMPS 拓扑/闭环/保护/反向验证）
     ├── SKILL.md
-    └── reference/
+    └── reference/           # 计划补充：topology-decision-tree / comp-design-workflow / component-stress-checklist
 ```
 
 ## 安装
@@ -93,6 +130,23 @@ powershell -ExecutionPolicy Bypass -File install-skills.ps1 -Target reasonix
 ```
 用 cw32-dev 框架新建一个电机控制项目，编译出 hex 并烧录到 CW32L012
 ```
+
+### 屏幕显示使用示例
+
+```
+帮我用CW32L012驱动一个ILI9341屏幕，用SPI接口
+```
+```
+创建一个OLED显示项目，用I2C接口的SSD1306
+```
+```
+生成一个独立的ST7789驱动代码
+```
+```
+给我一个240x240圆形屏幕GC9A01的完整驱动
+```
+
+屏幕指令会自动路由到对应芯片 skill（通过 `screen-dispatch` 调度器），生成完整的驱动代码。
 
 也可手动触发（Reasonix）：`/skill cw32l012` 或 `/skill cw32-framework`；
 或指定子智能体隔离运行：`/skill cw32l012 runAs=subagent`。

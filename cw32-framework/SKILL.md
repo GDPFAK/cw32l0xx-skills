@@ -180,21 +180,9 @@ cmake -B build/<app> -G Ninja `
 cmake --build --preset <preset>    # 或 ninja -C build/<app>
 ```
 
-## 烧录（skill 工作流：先自动跑环境脚本，再直调 pyocd）
+## 烧录（另见 `cw32-flash` skill）
 
-**自动烧录已暂时移除**：`cw32_app()` 默认不再生成 `flash`/`flash_reset` 目标（`CW32_ENABLE_FLASH` 默认 OFF）。烧录由 skill 按需执行；当用户发起烧录请求时，skill 依此流程操作：
-
-```powershell
-# 1) 先自动运行环境下载脚本（幂等：检测并补齐工具链/DFP，已存在则跳过）
-powershell -ExecutionPolicy Bypass -File setup-toolchain.ps1
-
-# 2) 再直调 pyocd 烧录（不经 CMake flash 目标）
-pyocd flash -t ${PYOCD_TARGET} build/<app>/<app>.hex
-pyocd reset -t ${PYOCD_TARGET}            # 需要复位时
-```
-
-- 在 cw32-dev 根目录运行 pyocd 自动加载 `pyocd.yaml`（指向 `tools/pyocd/` 下 4 个本地 DFP pack）；独立工程同样自带 `pyocd.yaml`。
-- 若用户需要恢复 CMake `flash`/`flash_reset` 目标（例如手动用 CI 烧录），可在配置时加上 `-DCW32_ENABLE_FLASH=ON`。
+烧录流程已拆分到独立 skill `cw32-flash`：`cw32_app()` 默认不再生成 `flash`/`flash_reset` 目标（`CW32_ENABLE_FLASH` 默认 OFF）。当用户发起烧录请求时，改用 `/skill cw32-flash` 操作（先跑 `setup-toolchain.ps1`，再 `pyocd flash -t ${PYOCD_TARGET} <app>.hex`）。若需恢复 CMake flash 目标（如 CI），配置时加 `-DCW32_ENABLE_FLASH=ON`。
 
 ## 与芯片 skill 配合（反向验证）
 
@@ -215,5 +203,5 @@ pyocd reset -t ${PYOCD_TARGET}            # 需要复位时
 - `apps/motor_control`、`apps/power_supply`：电机/电源可编译模板（5 层目录树，副本在 `reference/`）。
 - `reference/motor_control/`、`reference/power_supply/`：5 层模板源码（App/Core/Device/System/BSP）。
 - `reference/create-project.ps1`：生成完全独立工程（厂家库 -> `Drivers/`）。
-- `reference/setup-toolchain.ps1`：工具链/DFP 引导下载脚本（烧录前 skill 自动调用）。
+- 烧录相关（`setup-toolchain.ps1`、`pyocd.yaml`）见 `cw32-flash` skill 的 `reference/`。
 - `boards/cw32l0xx_mini/board.h/.c`：板级 API 与芯片切换写法。

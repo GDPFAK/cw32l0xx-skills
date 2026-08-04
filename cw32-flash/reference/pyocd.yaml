@@ -1,0 +1,8 @@
+# pyocd.yaml - pyocd session configuration for this project.
+# Points pyocd at the local DFP packs so CW32 targets work without downloading
+# from the (unavailable) CMSIS-Pack index.
+pack:
+  - tools/pyocd/WHXY.CW32F030_DFP.1.0.5.pack
+  - tools/pyocd/WHXY.CW32L010_DFP.1.0.2.pack
+  - tools/pyocd/WHXY.CW32L011_DFP.1.0.1.pack
+  - tools/pyocd/WHXY.CW32L012_DFP.1.0.2.pack
