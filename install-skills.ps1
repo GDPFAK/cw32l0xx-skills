@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 
 # Source: canonical skill folders live next to this script.
 $SrcDir = Join-Path $PSScriptRoot "cw32-framework"
-$SkillNames = @("cw32-framework", "cw32l010", "cw32l011", "cw32l012", "cw32-flash", "power-design")
+$SkillNames = @("cw32-framework", "cw32l010", "cw32l011", "cw32l012", "cw32-flash", "power-design", "gc9a01", "ili9341", "sh1106", "ssd1306", "st7735", "st7789", "screen-dispatch", "screen-interface")
 
 # Resolve per-agent destination directories.
 # Format: name -> @{ Type = "project"|"global"; Path = script-block returning dir }
