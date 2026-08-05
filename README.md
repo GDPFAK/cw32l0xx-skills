@@ -39,7 +39,34 @@ Cursor 等），无需改写。
 - **顶层专精 skill**（`power-design`）：覆盖 11 种常用开关电源拓扑（DC-DC buck/boost/buck-boost/flyback/forward/half-bridge/full-bridge/LLC、boost-PFC、inverter、LED 恒流）的程序设计、PWM 频率与分辨率设计、ADC 采样点、闭环算法（VM/PCM/ACM）、3 级保护硬件选型（VC/OPA/LVD）、5 层骨架基线与代码质量硬约束、12 步反向验证清单。加载入口：用户提及 SMPS/电源/buck/反激/PFC/逆变/恒压/恒流/补偿等任一关键词。
 - 与 `cw32-framework`（五层架构 + 编译） + `cw32l010/l011/l012`（寄存器级反向验证） + `cw32-flash`（烧录）配套使用。
 
-## 目录结构
+## 创建项目模板
+
+### 方式一：使用 create-project.ps1 脚本（推荐）
+
+使用 `reference/create-project.ps1` 脚本生成**完全独立的工程**，包含5层架构源码 + 厂家标准外设库（`Drivers/`）+ 启动/链接脚本 + cmake/pyocd 配置，生成后完全不依赖 cw32-dev：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File skills/cw32-framework/reference/create-project.ps1 `
+  -Name <工程名> -Chip cw32l012 -OutDir D:\work `
+  -SourceRoot D:\ai-project\dev\cw32-dev -Template motor_control
+```
+
+生成的项目目录结构：
+```
+<工程名>/
+├── App/ Core/ Device/ System/ BSP/     # 5 层源码
+├── Drivers/                            # 厂家标准外设库 inc/src（+ Drivers/CMakeLists.txt）
+├── startup/startup_<chip>.s  lds/<chip>.ld
+├── cmsis/  cmake/  pyocd.yaml
+├── setup-toolchain.ps1                 # 环境下载脚本
+└── CMakeLists.txt                      # 独立构建
+```
+
+### 方式二：手动复制模板源码（不含厂家库）
+
+如果只需要模板源码（5层架构），可以手动复制 `reference/motor_control/` 或 `reference/power_supply/` 目录。但这种方式**不会包含厂家库函数**，需要手动从 `sdk/<chip>/` 目录复制 `inc/` 和 `src/` 到项目的 `Drivers/` 目录，并创建 `Drivers/CMakeLists.txt`。
+
+**推荐使用 `create-project.ps1` 脚本**，它会自动完成所有复制工作，包括厂家库。
 
 ```
 skills/

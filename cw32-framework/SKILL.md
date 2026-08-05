@@ -126,7 +126,7 @@ target_include_directories(<app> PRIVATE App Core Device System BSP)
 3. 配置：用 `cmake --preset`（现有预设改 `CW32_APP`）或手工 `cmake -B build/<app> -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm-none-eabi.cmake -DCW32_CHIP=... -DCW32_BOARD=... -DCW32_APP=<app> -DCW32_RTOS=none -DPYOCD_TARGET=...`。
 4. 编译 → hex（命令见下）。烧录见「烧录」小节。
 
-## 创建完全独立工程（推荐给用户自行修改）
+## 创建独立工程（推荐给用户自行修改）
 
 当用户要在 cw32-dev **之外**建一个独立工程时，用 `reference/create-project.ps1` 生成：把 5 层模板源码 + **厂家标准外设库复制到 `Drivers/`** + 启动/链接脚本 + CMSIS + cmake 工具链 + pyocd 配置 + `setup-toolchain.ps1` 全部复制出来，生成后完全不依赖 cw32-dev，用户改完即可编译：
 
@@ -148,6 +148,12 @@ CMakeLists.txt                      # 独立构建，CW32_ENABLE_FLASH=OFF
 ```
 
 用户后续修改针对独立工程进行；cw32-dev 仅作为生成源，改动不同步回仓库。
+
+## 手动复制模板源码（不含厂家库）
+
+如果用户只需要模板源码（5层架构），可以手动复制 `reference/motor_control/` 或 `reference/power_supply/` 目录。但这种方式**不会包含厂家库函数**，需要手动从 `sdk/<chip>/` 目录复制 `inc/` 和 `src/` 到项目的 `Drivers/` 目录，并创建 `Drivers/CMakeLists.txt`。
+
+**推荐使用 `create-project.ps1` 脚本**，它会自动完成所有复制工作，包括厂家库。
 
 ## 模板一：电机控制（motor_control）
 
