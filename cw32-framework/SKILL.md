@@ -126,30 +126,47 @@ target_include_directories(<app> PRIVATE App Core Device System BSP)
 3. 配置：用 `cmake --preset`（现有预设改 `CW32_APP`）或手工 `cmake -B build/<app> -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm-none-eabi.cmake -DCW32_CHIP=... -DCW32_BOARD=... -DCW32_APP=<app> -DCW32_RTOS=none -DPYOCD_TARGET=...`。
 4. 编译 → hex（命令见下）。烧录见「烧录」小节。
 
-## 创建独立工程（推荐给用户自行修改）
+## 生成项目（默认方式）
 
-当用户要在 cw32-dev **之外**建一个独立工程时，用 `reference/create-project.ps1` 生成：把 5 层模板源码 + **厂家标准外设库复制到 `Drivers/`** + 启动/链接脚本 + CMSIS + cmake 工具链 + pyocd 配置 + `setup-toolchain.ps1` 全部复制出来，生成后完全不依赖 cw32-dev，用户改完即可编译：
+**默认使用 `create-project.ps1` 脚本生成独立工程**，无需用户手动指定。该脚本会自动：
+1. 复制5层架构源码（App/ Core/ Device/ System/ BSP/）
+2. 复制厂家标准外设库到 `Drivers/` 目录（inc/ + src/）
+3. 复制启动文件和链接脚本
+4. 复制cmake/pyocd配置
+5. 复制环境下载脚本
+
+生成后的项目**完全不依赖cw32-dev仓库**，可以独立编译和烧录。
+
+### 使用方法
+
+当用户要求生成项目时，自动使用以下命令：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File reference/create-project.ps1 `
-  -Name <工程名> -Chip cw32l012 -OutDir D:\work `
-  -SourceRoot D:\ai-project\dev\cw32-dev -Template motor_control
+  -Name <工程名> -Chip <芯片型号> -OutDir <输出目录> `
+  -SourceRoot D:\ai-project\dev\cw32-dev -Template <模板类型>
 ```
 
-生成目录（`<OutDir>/<工程名>/`）：
+参数说明：
+- `-Name`：工程名称（必需）
+- `-Chip`：芯片型号（cw32l010/cw32l011/cw32l012）
+- `-OutDir`：输出目录（默认为当前目录下的projects文件夹）
+- `-SourceRoot`：cw32-dev仓库路径（默认为D:\ai-project\dev\cw32-dev）
+- `-Template`：模板类型（motor_control/power_supply/blink）
+
+### 生成的项目结构
 
 ```
-App/ Core/ Device/ System/ BSP/     # 5 层源码（BSP 含 board.c/h 副本）
-Drivers/                            # 厂家标准外设库 inc/src（+ Drivers/CMakeLists.txt）
-startup/startup_<chip>.s  lds/<chip>.ld
-cmsis/  cmake/  pyocd.yaml
-setup-toolchain.ps1                 # 环境下载脚本（保留）
-CMakeLists.txt                      # 独立构建，CW32_ENABLE_FLASH=OFF
+<工程名>/
+├── App/ Core/ Device/ System/ BSP/     # 5 层源码
+├── Drivers/                            # 厂家标准外设库 inc/src（+ Drivers/CMakeLists.txt）
+├── startup/startup_<chip>.s  lds/<chip>.ld
+├── cmsis/  cmake/  pyocd.yaml
+├── setup-toolchain.ps1                 # 环境下载脚本
+└── CMakeLists.txt                      # 独立构建
 ```
 
-用户后续修改针对独立工程进行；cw32-dev 仅作为生成源，改动不同步回仓库。
-
-## 手动复制模板源码（不含厂家库）
+### 手动复制模板源码（不含厂家库）
 
 如果用户只需要模板源码（5层架构），可以手动复制 `reference/motor_control/` 或 `reference/power_supply/` 目录。但这种方式**不会包含厂家库函数**，需要手动从 `sdk/<chip>/` 目录复制 `inc/` 和 `src/` 到项目的 `Drivers/` 目录，并创建 `Drivers/CMakeLists.txt`。
 

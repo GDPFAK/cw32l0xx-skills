@@ -39,19 +39,36 @@ Cursor 等），无需改写。
 - **顶层专精 skill**（`power-design`）：覆盖 11 种常用开关电源拓扑（DC-DC buck/boost/buck-boost/flyback/forward/half-bridge/full-bridge/LLC、boost-PFC、inverter、LED 恒流）的程序设计、PWM 频率与分辨率设计、ADC 采样点、闭环算法（VM/PCM/ACM）、3 级保护硬件选型（VC/OPA/LVD）、5 层骨架基线与代码质量硬约束、12 步反向验证清单。加载入口：用户提及 SMPS/电源/buck/反激/PFC/逆变/恒压/恒流/补偿等任一关键词。
 - 与 `cw32-framework`（五层架构 + 编译） + `cw32l010/l011/l012`（寄存器级反向验证） + `cw32-flash`（烧录）配套使用。
 
-## 创建项目模板
+## 生成项目（默认方式）
 
-### 方式一：使用 create-project.ps1 脚本（推荐）
+**默认使用 `create-project.ps1` 脚本生成独立工程**，无需用户手动指定。该脚本会自动：
+1. 复制5层架构源码（App/ Core/ Device/ System/ BSP/）
+2. 复制厂家标准外设库到 `Drivers/` 目录（inc/ + src/）
+3. 复制启动文件和链接脚本
+4. 复制cmake/pyocd配置
+5. 复制环境下载脚本
 
-使用 `reference/create-project.ps1` 脚本生成**完全独立的工程**，包含5层架构源码 + 厂家标准外设库（`Drivers/`）+ 启动/链接脚本 + cmake/pyocd 配置，生成后完全不依赖 cw32-dev：
+生成后的项目**完全不依赖cw32-dev仓库**，可以独立编译和烧录。
+
+### 使用方法
+
+当用户要求生成项目时，自动使用以下命令：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File skills/cw32-framework/reference/create-project.ps1 `
-  -Name <工程名> -Chip cw32l012 -OutDir D:\work `
-  -SourceRoot D:\ai-project\dev\cw32-dev -Template motor_control
+  -Name <工程名> -Chip <芯片型号> -OutDir <输出目录> `
+  -SourceRoot D:\ai-project\dev\cw32-dev -Template <模板类型>
 ```
 
-生成的项目目录结构：
+参数说明：
+- `-Name`：工程名称（必需）
+- `-Chip`：芯片型号（cw32l010/cw32l011/cw32l012）
+- `-OutDir`：输出目录（默认为当前目录下的projects文件夹）
+- `-SourceRoot`：cw32-dev仓库路径（默认为D:\ai-project\dev\cw32-dev）
+- `-Template`：模板类型（motor_control/power_supply/blink）
+
+### 生成的项目结构
+
 ```
 <工程名>/
 ├── App/ Core/ Device/ System/ BSP/     # 5 层源码
@@ -62,7 +79,7 @@ powershell -ExecutionPolicy Bypass -File skills/cw32-framework/reference/create-
 └── CMakeLists.txt                      # 独立构建
 ```
 
-### 方式二：手动复制模板源码（不含厂家库）
+### 手动复制模板源码（不含厂家库）
 
 如果只需要模板源码（5层架构），可以手动复制 `reference/motor_control/` 或 `reference/power_supply/` 目录。但这种方式**不会包含厂家库函数**，需要手动从 `sdk/<chip>/` 目录复制 `inc/` 和 `src/` 到项目的 `Drivers/` 目录，并创建 `Drivers/CMakeLists.txt`。
 
